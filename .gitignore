@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+node_modules/
+dist/
+.env
+*.egg-info/
+*.tsbuildinfo
+.DS_Store
+playwright-report/
+test-results/

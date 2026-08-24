@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_DB: ci
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ci"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ci-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      CI_DATABASE_URL: postgresql+psycopg2://ci:ci@postgres:5432/ci
+      CI_REDIS_URL: redis://redis:6379/0
+      CI_AI_PROVIDER: mock   # set to "anthropic" and provide CI_AI_API_KEY for real analysis
+      CI_AI_API_KEY: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    environment:
+      CI_SERVER_URL: http://ci-server:8000
+      CI_WORKER_NAME: worker
+    depends_on:
+      - ci-server
+    volumes:
+      # Mount the host Docker socket so workers can launch job containers
+      # as SIBLINGS of themselves (docker-outside-of-docker), which avoids
+      # the security and layering issues of docker-in-docker.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # `deploy.replicas` only takes effect under `docker stack deploy` (swarm).
+    # For local `docker compose up`, run multiple independent workers with:
+    #   docker compose up --scale worker=3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - ci-server
+
+volumes:
+  pgdata:
