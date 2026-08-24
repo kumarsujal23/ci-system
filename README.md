@@ -160,26 +160,7 @@ docker-compose.yml  postgres, redis, ci-server, worker (scalable), frontend
 .github/workflows/ci.yml
 ```
 
-## Resume bullets
-
-Use these four bullets on a placement resume. Replace the technology or test
-counts only if you change the implementation.
-
-- Built **Forge**, a fault-tolerant CI platform with FastAPI, PostgreSQL,
-  Redis, React, and Docker, supporting repository registration, YAML pipelines,
-  worker orchestration, live logs, and build history.
-- Designed a pull-based scheduler with Redis priority queues, PostgreSQL-backed
-  job attempts, lease tokens, heartbeats, dead-worker recovery, and bounded
-  exponential retries for at-least-once execution.
-- Implemented isolated Docker pipeline execution with CPU/memory limits,
-  network controls, GitHub checkout, sequential step exit-code tracking,
-  timeout enforcement, streamed logs, and permanent-vs-infrastructure failure
-  classification.
-- Added a structured AI failure analyzer with mock and Anthropic providers,
-  Pydantic response validation, truncated log/context extraction, persisted
-  attempt-level suggestions, plus 27 backend and 5 browser end-to-end tests.
-
-## Project explanation for interviews
+## Project explanation 
 
 Forge is a small CI system. A user registers a public Git repository and a
 YAML pipeline in the React dashboard. The FastAPI server validates the YAML,
