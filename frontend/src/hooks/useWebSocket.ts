@@ -24,17 +24,42 @@ export function useLiveLogs(attemptId: string | null) {
 }
 
 export function useJobStatus(jobId: string | null, onMessage: (payload: any) => void) {
+  const onMessageRef = useRef(onMessage)
+  onMessageRef.current = onMessage
+
   useEffect(() => {
     if (!jobId) return
-    const ws = new WebSocket(wsUrl(`/ws/jobs/${jobId}/status`))
-    ws.onmessage = (event) => {
-      try {
-        onMessage(JSON.parse(event.data))
-      } catch {
-        // ignore malformed frames
+    let ws: WebSocket
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let stopped = false
+
+    function connect() {
+      ws = new WebSocket(wsUrl(`/ws/jobs/${jobId}/status`))
+      ws.onmessage = (event) => {
+        try {
+          onMessageRef.current(JSON.parse(event.data))
+        } catch {
+          // ignore malformed frames
+        }
+      }
+      ws.onclose = (event) => {
+        // Only reconnect on unexpected closes (not clean teardown from cleanup).
+        if (!stopped && !event.wasClean) {
+          reconnectTimer = setTimeout(connect, 2000)
+        }
+      }
+      ws.onerror = () => {
+        // onerror always precedes onclose; reconnect is handled there.
       }
     }
-    return () => ws.close()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    connect()
+
+    return () => {
+      stopped = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      ws?.close()
+    }
   }, [jobId])
 }
+

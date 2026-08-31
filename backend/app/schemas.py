@@ -29,6 +29,10 @@ class JobCreate(BaseModel):
     priority: int = 0
 
 
+class PipelineUpdate(BaseModel):
+    pipeline_yaml: str = Field(..., description="Updated YAML pipeline definition")
+
+
 class JobAttemptOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

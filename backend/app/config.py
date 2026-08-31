@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     docker_default_memory: str = "512m"
     docker_default_cpus: float = 1.0
     docker_network_mode: str = "none"  # jobs get no network by default; opt-in per pipeline
+    git_clone_depth: int = 50  # shallow clone depth; increase if pipelines reference old commits
 
     # AI Failure Analyzer
     ai_provider: str = "mock"          # "mock" | "anthropic" | "openai"

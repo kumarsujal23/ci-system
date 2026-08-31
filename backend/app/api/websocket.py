@@ -41,7 +41,7 @@ async def stream_logs(websocket: WebSocket, attempt_id: str):
 
     try:
         while True:
-            message = await asyncio.get_event_loop().run_in_executor(
+            message = await asyncio.get_running_loop().run_in_executor(
                 None, pubsub.get_message, True, 1.0
             )
             if message and message["type"] == "message":
@@ -64,7 +64,7 @@ async def stream_status(websocket: WebSocket, job_id: str):
 
     try:
         while True:
-            message = await asyncio.get_event_loop().run_in_executor(
+            message = await asyncio.get_running_loop().run_in_executor(
                 None, pubsub.get_message, True, 1.0
             )
             if message and message["type"] == "message":

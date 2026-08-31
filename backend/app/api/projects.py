@@ -41,16 +41,15 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/{project_id}/pipeline", response_model=schemas.ProjectOut)
-def update_pipeline(project_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_pipeline(project_id: str, payload: schemas.PipelineUpdate, db: Session = Depends(get_db)):
     project = db.get(models.Project, project_id)
     if not project:
         raise HTTPException(404, "project not found")
-    new_yaml = payload.get("pipeline_yaml", "")
     try:
-        parse_pipeline(new_yaml)
+        parse_pipeline(payload.pipeline_yaml)
     except PipelineParseError as e:
         raise HTTPException(422, f"invalid pipeline_yaml: {e}")
-    project.pipeline_yaml = new_yaml
+    project.pipeline_yaml = payload.pipeline_yaml
     db.commit()
     db.refresh(project)
     return project

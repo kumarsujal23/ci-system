@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, String, Integer, Float, DateTime, ForeignKey, Text, Enum, Boolean, JSON
+    Column, String, Integer, Float, DateTime, ForeignKey, Text, Enum, Boolean, JSON, Index
 )
 from sqlalchemy.orm import relationship
 
@@ -128,6 +128,13 @@ class JobAttempt(Base):
     ai_analysis = relationship(
         "AIAnalysis", back_populates="attempt", uselist=False, cascade="all, delete-orphan"
     )
+
+
+# Indexes on hot reaper query paths.
+# ix_attempts_reaper: scanned every reaper_interval_seconds to find expired leases.
+# ix_attempts_job_id: used by reap_dead_workers, reconcile, and attempt listing.
+Index("ix_attempts_reaper", JobAttempt.status, JobAttempt.lease_expires_at)
+Index("ix_attempts_job_id", JobAttempt.job_id)
 
 
 class Worker(Base):

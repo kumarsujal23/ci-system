@@ -25,8 +25,10 @@ import docker
 from docker.errors import DockerException, ContainerError, ImageNotFound
 
 from app.pipeline import Pipeline, PipelineStep
+from app.config import get_settings
 
 LogCallback = Callable[[str], None]
+settings = get_settings()
 
 
 @dataclass
@@ -55,6 +57,7 @@ class DockerExecutor:
         repo_url: str,
         commit_sha: str,
         on_log: LogCallback,
+        attempt_id: str = "",
     ) -> ExecutionResult:
         try:
             self.client.images.pull(pipeline.image)
@@ -67,15 +70,18 @@ class DockerExecutor:
 
         # Steps run one at a time (not as one big shell script) so we can
         # report *which* step failed and stream logs per-step.
-        return self._run_steps(pipeline, repo_url, commit_sha, on_log)
+        return self._run_steps(pipeline, repo_url, commit_sha, on_log, attempt_id)
 
-    def _run_steps(self, pipeline: Pipeline, repo_url, commit_sha, on_log) -> ExecutionResult:
+    def _run_steps(self, pipeline: Pipeline, repo_url, commit_sha, on_log, attempt_id: str = "") -> ExecutionResult:
         container = None
+        # Name prefix lets operators identify job containers on the shared Docker host.
+        container_name = f"ci-job-{attempt_id[:8]}" if attempt_id else None
         try:
             container = self.client.containers.run(
                 pipeline.image,
                 command="sleep " + str(pipeline.timeout_seconds + 30),
                 detach=True,
+                name=container_name,
                 network_mode=pipeline.network,
                 mem_limit=pipeline.resources.memory,
                 nano_cpus=int(pipeline.resources.cpus * 1e9),
@@ -97,7 +103,7 @@ class DockerExecutor:
                 "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git; "
                 "elif command -v apk >/dev/null 2>&1; then apk add --no-cache git; "
                 "else echo '[infra] job image does not provide a supported package manager to install git' >&2; exit 125; fi; fi && "
-                f"git clone --depth 50 -- {shlex.quote(repo_url)} /workspace/repo && "
+                f"git clone --depth {settings.git_clone_depth} -- {shlex.quote(repo_url)} /workspace/repo && "
                 f"cd /workspace/repo && git checkout {shlex.quote(commit_sha)}"
             )
             ok, code = self._exec(container, checkout_cmd, on_log, "checkout", deadline)

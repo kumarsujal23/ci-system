@@ -132,6 +132,7 @@ class Worker:
         try:
             result = self.executor.run_pipeline(
                 pipeline, lease["repo_url"], lease["commit_sha"], on_log,
+                attempt_id=attempt_id,
             )
         finally:
             renew_stop.set()

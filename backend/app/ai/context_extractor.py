@@ -47,11 +47,18 @@ def extract_referenced_paths(log_text: str, max_paths: int) -> list[str]:
     return found
 
 
+# Paths that are never useful as LLM context — filter before reading files.
+_IRRELEVANT_PATH_SEGMENTS = ("node_modules", "site-packages", ".git", "__pycache__", ".tox", "dist/")
+
+
 def build_source_context(repo_root: str | Path, log_text: str) -> list[SourceSnippet]:
     repo_root = Path(repo_root)
     paths = extract_referenced_paths(log_text, settings.ai_max_source_files)
     snippets: list[SourceSnippet] = []
     for rel_path in paths:
+        # Skip vendored or generated directories — never useful as LLM context.
+        if any(seg in rel_path for seg in _IRRELEVANT_PATH_SEGMENTS):
+            continue
         full_path = (repo_root / rel_path).resolve()
         try:
             # Guard against path traversal outside the repo checkout.

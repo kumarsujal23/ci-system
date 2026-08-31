@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,17 @@ def append_log(attempt_id: str, payload: LogChunkIn, db: Session = Depends(get_d
     return {"ok": True}
 
 
+@router.get("/{attempt_id}/logs", response_class=PlainTextResponse)
+def get_logs(attempt_id: str, db: Session = Depends(get_db)):
+    """REST fallback for stored attempt logs. The canonical live view is via
+    WebSocket (/ws/attempts/{id}/logs), but this endpoint lets API clients
+    and scripts fetch the full persisted log without a WebSocket connection."""
+    attempt = db.get(models.JobAttempt, attempt_id)
+    if not attempt:
+        raise HTTPException(404, "attempt not found")
+    return attempt.logs or ""
+
+
 @router.post("/{attempt_id}/renew")
 def renew(attempt_id: str, payload: RenewIn, db: Session = Depends(get_db)):
     ok = lease_manager.renew_lease(db, attempt_id, payload.lease_token)
@@ -45,7 +57,8 @@ def renew(attempt_id: str, payload: RenewIn, db: Session = Depends(get_db)):
 
 
 @router.post("/{attempt_id}/complete", response_model=schemas.JobAttemptOut)
-def complete(attempt_id: str, payload: schemas.AttemptReport, db: Session = Depends(get_db)):
+def complete(attempt_id: str, payload: schemas.AttemptReport,
+             background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if payload.logs_tail:
         attempt_check = db.get(models.JobAttempt, attempt_id)
         if attempt_check and attempt_check.lease_token == payload.lease_token:
@@ -68,18 +81,27 @@ def complete(attempt_id: str, payload: schemas.AttemptReport, db: Session = Depe
         "requeued": requeued,
     })
 
-    # Trigger AI analysis automatically for any non-success outcome. This
-    # runs synchronously here for simplicity; a production system would
-    # push this onto a background task/queue so a slow LLM call never
-    # blocks the worker's report call. CI's own pass/fail verdict is
-    # already finalized above and is completely unaffected by whatever
-    # happens next.
+    # Trigger AI analysis as a background task so a slow LLM call (up to
+    # ai_timeout_seconds) never adds latency to the worker's completion report.
+    # The CI pass/fail verdict is already finalized above and is completely
+    # unaffected by whatever happens in the background task.
     if attempt.status in (models.AttemptStatus.FAILED, models.AttemptStatus.INFRA_ERROR):
-        try:
-            analyze_attempt(db, attempt)
-        except Exception:
-            # Absolute last-resort guard: AI analysis must never be able to
-            # break the CI completion endpoint.
-            pass
+        background_tasks.add_task(_run_analysis, attempt.id)
 
     return attempt
+
+
+def _run_analysis(attempt_id: str) -> None:
+    """Background task: analyze a failed attempt. Runs after the HTTP response
+    is sent, so a slow or unavailable LLM never blocks the worker's report."""
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        attempt = db.get(models.JobAttempt, attempt_id)
+        if attempt:
+            try:
+                analyze_attempt(db, attempt)
+            except Exception:
+                pass  # Absolute last-resort guard: AI must never affect CI correctness.
+    finally:
+        db.close()

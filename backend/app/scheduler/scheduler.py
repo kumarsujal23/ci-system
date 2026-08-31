@@ -35,15 +35,17 @@ def run_reaper_once() -> dict:
         dead_workers = lease_manager.reap_dead_workers(db)
         expired_leases = lease_manager.reap_expired_leases(db)
         promoted = lease_manager.promote_delayed_jobs(db)
-        if dead_workers or expired_leases or promoted:
+        reconciled = lease_manager.reconcile_orphaned_jobs(db)
+        if dead_workers or expired_leases or promoted or reconciled:
             logger.info(
-                "reaper: dead_workers=%s expired_leases=%s promoted=%s",
-                dead_workers, expired_leases, promoted,
+                "reaper: dead_workers=%s expired_leases=%s promoted=%s reconciled=%s",
+                dead_workers, expired_leases, promoted, reconciled,
             )
         return {
             "dead_workers": dead_workers,
             "expired_leases": expired_leases,
             "promoted": promoted,
+            "reconciled": reconciled,
         }
     finally:
         db.close()

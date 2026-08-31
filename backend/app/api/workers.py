@@ -52,7 +52,6 @@ def claim_job(worker_id: str, db: Session = Depends(get_db), response: Response 
 
     attempt = claim_next_job(db, worker)
     if attempt is None:
-        response.status_code = 204
         return Response(status_code=204)
 
     job = db.get(models.Job, attempt.job_id)

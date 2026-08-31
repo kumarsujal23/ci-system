@@ -266,3 +266,43 @@ def reap_dead_workers(db: Session) -> int:
     if stale:
         db.commit()
     return len(stale)
+
+
+def reconcile_orphaned_jobs(db: Session) -> int:
+    """Reconcile the Redis-Postgres atomicity gap.
+
+    When a job is created, it is written to Postgres then enqueued in Redis.
+    If the server crashes between those two operations, the job stays in
+    QUEUED status in Postgres but has no entry in Redis — workers never see
+    it and the reaper (which only scans active leases) never finds it.
+
+    This function scans for QUEUED jobs whose most recent attempt has no
+    active lease (status not LEASED/RUNNING), indicating the Redis entry was
+    lost, and re-enqueues them. It is idempotent: if the job is already in
+    the Redis queue, zadd's deduplication semantics mean it is simply
+    re-scored (harmless) rather than duplicated.
+    """
+    orphaned = (
+        db.query(models.Job)
+        .filter(models.Job.status == models.JobStatus.QUEUED)
+        .all()
+    )
+    requeued = 0
+    for job in orphaned:
+        # Check whether any attempt for this job is actively held by a worker.
+        active = (
+            db.query(models.JobAttempt)
+            .filter(
+                models.JobAttempt.job_id == job.id,
+                models.JobAttempt.status.in_(
+                    [models.AttemptStatus.LEASED, models.AttemptStatus.RUNNING]
+                ),
+            )
+            .first()
+        )
+        if active:
+            continue  # A worker holds it — not orphaned.
+        # No active attempt: re-enqueue. Redis zadd is idempotent.
+        redis_client.enqueue(job.id, job.priority, now().timestamp())
+        requeued += 1
+    return requeued

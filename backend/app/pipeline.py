@@ -35,7 +35,7 @@ class Pipeline(BaseModel):
     image: str
     timeout_seconds: int = Field(default=900, gt=0)
     resources: ResourceLimits = ResourceLimits()
-    network: str = "bridge"  # "none" or "bridge"
+    network: str = "none"  # "none" (default, no outbound network) or "bridge" (opt-in for remote deps)
     steps: list[PipelineStep]
 
     @field_validator("network")
